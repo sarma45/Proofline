@@ -1,6 +1,15 @@
 import React from 'react';
 import Link from 'next/link';
 import { Shield, FileText, ChevronRight, BookOpen, Terminal, Lock } from 'lucide-react';
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Documentation',
+  description: 'Learn how to integrate Proofline into your GitHub workflow to verify AI-generated code changes.',
+  alternates: {
+    canonical: '/docs',
+  },
+};
 
 export default function DocsPage() {
   return (

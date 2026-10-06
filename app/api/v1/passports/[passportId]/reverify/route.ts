@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../../lib/prisma';
 import { AssuranceStateMachine } from '../../../../../../lib/state-machine';
+import { getSessionProjectId } from '../../../../../../lib/auth';
 
 export async function POST(
   request: Request,
@@ -9,8 +10,8 @@ export async function POST(
   try {
     const { passportId } = params;
 
-    // MVP: Simulate resolving tenant/project from Auth context
-    const mockSessionProjectId = (await prisma.project.findFirst())?.id;
+    // Resolve tenant/project from Auth context
+    const mockSessionProjectId = await getSessionProjectId(request);
 
     if (!mockSessionProjectId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -32,7 +33,6 @@ export async function POST(
     const transitionResult = await AssuranceStateMachine.transition({
       passportId,
       actor: 'user_reverify',
-      fromStatus: passport.assuranceStatus as any,
       trigger: 'new_commit_pushed', // Or another appropriate trigger if we create one for manual re-verify
       payload: { rationale: 'Manual re-verification triggered' }
     });

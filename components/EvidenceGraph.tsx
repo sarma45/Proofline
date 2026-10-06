@@ -1,19 +1,42 @@
 import React from 'react';
 import { ArrowRight, FileJson, GitCommit, CheckCircle, Search, ShieldCheck } from 'lucide-react';
 
-export function EvidenceGraph() {
-  // A clean, SVG-based or flex-based horizontal workflow graph
-  // intent → plan → changed file → verification case → result
+export function EvidenceGraph({ passport }: { passport: any }) {
+  // Determine Intent Node state
+  const intentStatus = passport?.intent?.source === 'declared' || passport?.intent?.source === 'inferred' ? 'verified' : 'pending';
+  const intentColor = intentStatus === 'verified' ? 'text-status-verified' : 'text-muted';
+
+  // Determine Plan Node state
+  const hasPlan = !!passport?.planAlignment?.planHash;
+  const planStatus = hasPlan ? 'verified' : 'pending';
+  const planColor = hasPlan ? 'text-status-verified' : 'text-muted';
+
+  // Determine Change Map Node state
+  const hasChanges = passport?.changeMap?.files?.length > 0;
+  const changeStatus = hasChanges ? 'verified' : 'pending';
+  const changeColor = hasChanges ? 'text-status-verified' : 'text-muted';
+
+  // Determine Verification Node state
+  const checksFailed = passport?.verification?.checks?.some((c: any) => c.status === 'failed');
+  const allChecksPassed = passport?.verification?.checks?.every((c: any) => c.status === 'passed' || c.status === 'skipped');
+  const verifStatus = checksFailed ? 'failed' : (allChecksPassed && passport?.verification?.checks?.length > 0 ? 'verified' : 'pending');
+  const verifColor = verifStatus === 'failed' ? 'text-status-failed' : (verifStatus === 'verified' ? 'text-status-verified' : 'text-status-review');
+
+  // Determine Review Node state
+  const latestDecision = passport?.decisions?.[0];
+  const reviewStatus = latestDecision?.decision === 'approve' ? 'verified' : (latestDecision?.decision === 'block' ? 'failed' : (passport?.status === 'HUMAN_REVIEW_REQUIRED' ? 'pending' : 'skipped'));
+  const reviewColor = reviewStatus === 'verified' ? 'text-status-verified' : (reviewStatus === 'failed' ? 'text-status-failed' : (reviewStatus === 'pending' ? 'text-status-review' : 'text-muted'));
+
   const nodes = [
-    { id: 'intent', label: 'Intent Declared', icon: Search, status: 'active', color: 'text-accent' },
-    { id: 'plan', label: 'Plan Generated', icon: FileJson, status: 'active', color: 'text-foreground' },
-    { id: 'change-map', label: 'Files Changed', icon: GitCommit, status: 'active', color: 'text-foreground' },
-    { id: 'verification', label: 'Verified', icon: CheckCircle, status: 'verified', color: 'text-status-verified' },
-    { id: 'review', label: 'Human Review', icon: ShieldCheck, status: 'pending', color: 'text-status-review' }
+    { id: 'intent', label: 'Intent', icon: Search, status: intentStatus, color: intentColor },
+    { id: 'plan', label: 'Plan', icon: FileJson, status: planStatus, color: planColor },
+    { id: 'change-map', label: 'Change Map', icon: GitCommit, status: changeStatus, color: changeColor },
+    { id: 'verification', label: 'Verification', icon: CheckCircle, status: verifStatus, color: verifColor },
+    { id: 'review', label: 'Review', icon: ShieldCheck, status: reviewStatus, color: reviewColor }
   ];
 
   return (
-    <div className="w-full overflow-x-auto pb-4">
+    <div className="evidence-graph-container w-full overflow-x-auto pb-4">
       <div className="min-w-[600px] flex items-center justify-between p-8 bg-background-elevated border border-border rounded-xl">
         {nodes.map((node, index) => (
           <React.Fragment key={node.id}>

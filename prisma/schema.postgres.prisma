@@ -1,0 +1,205 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  memberships Membership[]
+  projects    Project[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  memberships    Membership[]
+}
+
+model Membership {
+  id        String   @id @default(uuid())
+  role      String   @default("member")
+  createdAt DateTime @default(now())
+
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([userId, organizationId])
+}
+
+model Project {
+  id        String   @id @default(uuid())
+  name      String
+  githubInstallationId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  repositories Repository[]
+  policies     Policy[]
+  passports    Passport[]
+}
+
+model Repository {
+  id           String   @id @default(uuid())
+  githubRepoId String   @unique
+  fullName     String
+  createdAt    DateTime @default(now())
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  pullRequests PullRequest[]
+}
+
+model Policy {
+  id        String   @id @default(uuid())
+  version   String
+  rules     String // the actual policy configuration (stored as JSON string)
+  createdAt DateTime @default(now())
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+}
+
+model PullRequest {
+  id             String   @id @default(uuid())
+  githubPrId     String   @unique
+  number         Int
+  title          String
+  baseCommit     String
+  proposedCommit String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id])
+
+  passports Passport[]
+}
+
+model Passport {
+  id              String   @id @default(uuid())
+  assuranceStatus String
+  scopeSummary    String
+  policyVersion   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  version         Int      @default(1)
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  pullRequestId String
+  pullRequest   PullRequest @relation(fields: [pullRequestId], references: [id])
+
+  verificationRuns VerificationRun[]
+  humanDecisions   HumanDecision[]
+  EvidenceArtifact EvidenceArtifact[]
+  auditEvents      AuditEvent[]
+}
+
+model VerificationRun {
+  id          String    @id @default(uuid())
+  status      String // running, completed, failed
+  leasedUntil DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  passportId String
+  passport   Passport @relation(fields: [passportId], references: [id])
+
+  results          VerificationResult[]
+  EvidenceArtifact EvidenceArtifact[]
+}
+
+model VerificationResult {
+  id        String   @id @default(uuid())
+  checkType String
+  status    String
+  severity  String?
+  message   String
+  createdAt DateTime @default(now())
+
+  verificationRunId String
+  verificationRun   VerificationRun @relation(fields: [verificationRunId], references: [id])
+}
+
+model HumanDecision {
+  id           String   @id @default(uuid())
+  decision     String
+  actor        String
+  rationale    String?
+  reviewedHash String
+  createdAt    DateTime @default(now())
+
+  passportId String
+  passport   Passport @relation(fields: [passportId], references: [id])
+}
+
+model GithubWebhookDelivery {
+  id        String   @id
+  event     String
+  action    String?
+  payload   String
+  createdAt DateTime @default(now())
+}
+
+model EvidenceArtifact {
+  id             String    @id @default(uuid())
+  hash           String
+  uri            String
+  sizeBytes      Int
+  contentType    String
+  sensitivity    String    @default("internal")
+  redactionClass String?
+  retentionUntil DateTime?
+
+  passportId String?
+  passport   Passport? @relation(fields: [passportId], references: [id], onDelete: Cascade)
+
+  verificationRunId String?
+  verificationRun   VerificationRun? @relation(fields: [verificationRunId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OutboxEvent {
+  id            String    @id @default(uuid())
+  topic         String
+  payload       String
+  status        String    @default("pending") // pending, delivered, failed
+  attempts      Int       @default(0)
+  lastAttemptAt DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid())
+  action    String
+  actor     String
+  details   String // JSON string
+  createdAt DateTime @default(now())
+
+  passportId String
+  passport   Passport @relation(fields: [passportId], references: [id])
+}

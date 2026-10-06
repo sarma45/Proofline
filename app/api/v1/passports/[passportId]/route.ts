@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../lib/prisma';
 import { retrieveEvidenceBlob } from '../../../../../lib/blobStorage';
 import crypto from 'crypto';
+import { getSessionProjectId } from '../../../../../lib/auth';
 
 export async function GET(
   request: Request,
@@ -10,8 +11,8 @@ export async function GET(
   try {
     const { passportId } = params;
 
-    // MVP: Simulate resolving tenant/project from Auth context (e.g. JWT)
-    const mockSessionProjectId = (await prisma.project.findFirst())?.id;
+    // MVP: Resolve tenant/project from Auth context (e.g. JWT or header)
+    const mockSessionProjectId = await getSessionProjectId(request);
 
     if (!mockSessionProjectId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -34,6 +35,9 @@ export async function GET(
         },
         EvidenceArtifact: {
           take: 1 // Get the associated evidence blob
+        },
+        humanDecisions: {
+          orderBy: { createdAt: 'desc' }
         }
       }
     });
@@ -63,15 +67,23 @@ export async function GET(
     const uiPayload = {
       id: passport.id,
       repo: passport.pullRequest?.repository?.fullName || 'unknown/repo',
+      pullRequestNumber: passport.pullRequest?.number || null,
       baseCommit: passport.pullRequest?.baseCommit || 'unknown',
       proposedCommit: passport.pullRequest?.proposedCommit || 'unknown',
       status: passport.assuranceStatus,
       scopeSummary: passport.scopeSummary,
       policyVersion: passport.policyVersion,
+      reviewedHash: passport.humanDecisions?.[0]?.reviewedHash || '', // Just for UI match check
+      mergeHash: passport.pullRequest?.proposedCommit || '',
       
       // Merge from Blob
-      intent: evidenceData.plan || { summary: "No plan found" },
-      changeMap: evidenceData.changeMap || [],
+      intent: evidenceData.intent || evidenceData.plan || { summary: "No plan found", source: "unknown", successCriteria: [], nonGoals: [], assumptions: [] },
+      changeMap: evidenceData.changeMap || { files: [], dependencies: [] },
+      planAlignment: evidenceData.planAlignment || { 
+        plannedFileChanged: false, unplannedFileChanged: false, unplannedFiles: [],
+        plannedBehaviorEvidenced: "unknown", testAddedOrUpdated: false, scopeExpanded: false,
+        planVersion: "", planHash: ""
+      },
       unknowns: evidenceData.unknowns || [],
 
       // Reconstruct verification object
@@ -81,6 +93,12 @@ export async function GET(
           status: r.status,
           summary: r.message
         })) || []
+      },
+      decisions: passport.humanDecisions || [],
+      audit: evidenceData.audit || {
+        requestId: crypto.randomUUID(),
+        provenanceLevel: 'l1',
+        skillVersions: ['v1.0.0']
       }
     };
 

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { AssuranceStateMachine, AssuranceStatus } from '../../../../../lib/state-machine';
+import { AssuranceStateMachine, AssuranceStatus } from '../../../../../../lib/state-machine';
+import { prisma } from '../../../../../../lib/prisma';
+import { getSessionProjectId } from '../../../../../../lib/auth';
 
 export async function POST(
   request: Request,
@@ -10,6 +12,18 @@ export async function POST(
     const body = await request.json();
     
     const { decision, rationale, reviewedHash, currentStatus } = body;
+
+    const projectId = await getSessionProjectId(request);
+    if (!projectId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const passport = await prisma.passport.findUnique({
+      where: { id: passportId, projectId }
+    });
+    if (!passport) {
+      return NextResponse.json({ error: "Passport not found" }, { status: 404 });
+    }
 
     if (!decision || !reviewedHash || !currentStatus) {
       return NextResponse.json({
@@ -26,7 +40,6 @@ export async function POST(
     const transitionResult = await AssuranceStateMachine.transition({
       passportId,
       actor: 'user_123', // Stubbed auth
-      fromStatus: currentStatus as AssuranceStatus,
       trigger,
       payload: { rationale, reviewedHash }
     });
@@ -40,8 +53,16 @@ export async function POST(
       }, { status: 409 });
     }
 
-    // If successful, log the decision to HumanDecision table (Stub)
-    // await prisma.humanDecision.create({ ... })
+    // If successful, log the decision to HumanDecision table
+    await prisma.humanDecision.create({
+      data: {
+        decision: decision.toUpperCase(),
+        actor: 'user_123',
+        rationale: rationale || null,
+        reviewedHash: reviewedHash,
+        passportId: passport.id
+      }
+    });
 
     return NextResponse.json({
       success: true,

@@ -11,7 +11,9 @@ vi.spyOn(console, 'error').mockImplementation(() => {});
 vi.mock('../lib/prisma', () => ({
   prisma: {
     verificationRun: {
-      update: vi.fn(),
+      update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findUnique: vi.fn(),
     },
     verificationResult: {
       create: vi.fn(),
@@ -53,7 +55,8 @@ describe('Verification Worker', () => {
         }
       }
     };
-    (prisma.verificationRun.update as any).mockResolvedValue(mockRun);
+    (prisma.verificationRun.findUnique as any).mockResolvedValue(mockRun);
+    (prisma.verificationRun.updateMany as any).mockResolvedValue({ count: 1 });
     (prisma.verificationResult.create as any).mockResolvedValue({ status: 'passed' });
     (AssuranceStateMachine.transition as any).mockResolvedValue({ success: true, toStatus: 'VERIFIED_FOR_SCOPE' });
 
@@ -62,9 +65,9 @@ describe('Verification Worker', () => {
     await processVerificationRun('run-1');
 
     // Assert lease was taken
-    expect(prisma.verificationRun.update).toHaveBeenCalledWith(
+    expect(prisma.verificationRun.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'run-1' },
+        where: { id: 'run-1', status: 'pending' },
         data: expect.objectContaining({ status: 'running' })
       })
     );
@@ -76,7 +79,6 @@ describe('Verification Worker', () => {
     expect(AssuranceStateMachine.transition).toHaveBeenCalledWith({
       passportId: 'passport-1',
       actor: 'system:engine',
-      fromStatus: 'EVIDENCE_COLLECTING',
       trigger: expect.any(String) // Either checks_done_clean or checks_done_human_needed depending on the fixture
     });
 
@@ -97,8 +99,8 @@ describe('Verification Worker', () => {
         }
       }
     };
-    (prisma.verificationRun.update as any).mockResolvedValueOnce(mockRun); // First call (lease)
-    (prisma.verificationRun.update as any).mockResolvedValueOnce(mockRun); // Second call (catch block recovery)
+    (prisma.verificationRun.findUnique as any).mockResolvedValue(mockRun);
+    (prisma.verificationRun.updateMany as any).mockResolvedValue({ count: 1 });
     
     (AssuranceStateMachine.transition as any).mockResolvedValue({ success: false, error: 'Illegal' });
 

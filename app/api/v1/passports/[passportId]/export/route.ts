@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../../lib/prisma';
 import { retrieveEvidenceBlob } from '../../../../../../lib/blobStorage';
 
+import { getSessionProjectId } from '../../../../../../lib/auth';
+
 export async function GET(
   request: Request,
   { params }: { params: { passportId: string } }
@@ -9,52 +11,84 @@ export async function GET(
   try {
     const { passportId } = params;
 
-    // MVP: Simulate resolving tenant/project from Auth context
-    const mockSessionProjectId = (await prisma.project.findFirst())?.id;
-
-    if (!mockSessionProjectId) {
+    const projectId = await getSessionProjectId(request);
+    if (!projectId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const passport = await prisma.passport.findUnique({
       where: { 
         id: passportId,
-        projectId: mockSessionProjectId
+        projectId
       },
       include: {
         EvidenceArtifact: true,
-        pullRequest: true
+        pullRequest: true,
+        auditEvents: true,
+        humanDecisions: true
       }
     });
 
     if (!passport) {
-      return NextResponse.json({ error: "Passport not found or unauthorized" }, { status: 404 });
+      return NextResponse.json({ error: "Passport not found" }, { status: 404 });
     }
 
     // Load blobs
     const evidenceBlobs = await Promise.all(
-      passport.EvidenceArtifact.map(async (artifact: any) => ({
-        type: artifact.contentType,
-        data: JSON.parse(await retrieveEvidenceBlob(artifact.uri))
-      }))
+      passport.EvidenceArtifact.map(async (artifact: any) => {
+        const raw = await retrieveEvidenceBlob(artifact.uri);
+        return {
+          id: artifact.id,
+          type: artifact.contentType,
+          hash: artifact.hash,
+          data: raw ? JSON.parse(raw) : null
+        };
+      })
     );
 
     // Filter and redact secrets (for export safety)
     const sanitizedEvidence = evidenceBlobs.map((blob: any) => {
-      // Very basic MVP redaction
+      if (!blob.data) return blob;
       const stringified = JSON.stringify(blob.data);
       const redacted = stringified.replace(/sk-[a-zA-Z0-9]{20,}/g, '[REDACTED]');
-      return { type: blob.type, data: JSON.parse(redacted) };
+      return { ...blob, data: JSON.parse(redacted) };
     });
 
-    // Assemble export package
+    // Assemble Canonical Export Package v1.0
     const exportData = {
+      schema_version: "1.0",
       id: passport.id,
-      schema_version: passport.version,
       status: passport.assuranceStatus,
-      repository: passport.pullRequest?.githubPrId.split('-')[0],
-      pull_request: passport.pullRequest?.number,
+      scope_summary: passport.scopeSummary,
+      policy_version: passport.policyVersion,
+      created_at: passport.createdAt.toISOString(),
+      updated_at: passport.updatedAt.toISOString(),
+      repository: {
+        id: passport.pullRequest?.repositoryId,
+        full_name: passport.pullRequest?.githubPrId.split('-')[0]
+      },
+      pull_request: {
+        id: passport.pullRequest?.id,
+        number: passport.pullRequest?.number,
+        base_commit: passport.pullRequest?.baseCommit,
+        proposed_commit: passport.pullRequest?.proposedCommit
+      },
       evidence: sanitizedEvidence,
+      decisions: passport.humanDecisions.map(d => ({
+        id: d.id,
+        decision: d.decision,
+        actor: d.actor,
+        rationale: d.rationale,
+        reviewed_hash: d.reviewedHash,
+        created_at: d.createdAt.toISOString()
+      })),
+      audit_events: passport.auditEvents.map(a => ({
+        id: a.id,
+        action: a.action,
+        actor: a.actor,
+        details: JSON.parse(a.details),
+        created_at: a.createdAt.toISOString()
+      })),
       exported_at: new Date().toISOString()
     };
 

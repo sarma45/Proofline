@@ -2,6 +2,14 @@ import React from 'react';
 import Link from 'next/link';
 import { Shield, ChevronRight, Github, Code, CheckCircle, FileJson, XCircle } from 'lucide-react';
 import { PRGateSummary } from '../components/PRGateSummary';
+import { HeroCanvas } from '../components/HeroCanvas';
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  alternates: {
+    canonical: '/',
+  },
+};
 
 export default function LandingPage() {
   return (
@@ -32,7 +40,8 @@ export default function LandingPage() {
         {/* Hero Section */}
         <section className="py-24 px-6 relative overflow-hidden">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-accent/10 via-background to-background -z-10"></div>
-          <div className="max-w-4xl mx-auto text-center space-y-8">
+          <HeroCanvas />
+          <div className="max-w-4xl mx-auto text-center space-y-8 relative z-10">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-background-elevated text-sm text-muted">
               <span className="flex h-2 w-2 rounded-full bg-status-verified"></span>
               Now verifying AI-generated Pull Requests
@@ -145,8 +154,8 @@ export default function LandingPage() {
           </div>
           <div className="flex gap-6">
             <Link href="/github-check" className="hover:text-foreground">GitHub Check Mocks</Link>
-            <Link href="#" className="hover:text-foreground">Privacy</Link>
-            <Link href="#" className="hover:text-foreground">Terms</Link>
+            <Link href="/privacy" className="hover:text-foreground">Privacy</Link>
+            <Link href="/terms" className="hover:text-foreground">Terms</Link>
           </div>
         </div>
       </footer>

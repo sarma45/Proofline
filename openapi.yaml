@@ -1,0 +1,201 @@
+openapi: 3.0.3
+info:
+  title: Proofline API
+  description: Deep Audit & Enterprise Verification OS API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local development server
+paths:
+  /passports/{passportId}:
+    get:
+      summary: Get a passport by ID
+      operationId: getPassport
+      parameters:
+        - name: passportId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: x-tenant-id
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Passport retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Passport'
+        '404':
+          description: Passport not found
+        '500':
+          description: Internal server error
+  /passports/{passportId}/export:
+    get:
+      summary: Export a passport in canonical v1.0 format
+      operationId: exportPassport
+      parameters:
+        - name: passportId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: x-tenant-id
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Passport exported successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PassportExport'
+        '404':
+          description: Passport not found
+        '500':
+          description: Internal server error
+  /passports/{passportId}/decision:
+    post:
+      summary: Record a human decision for a passport
+      operationId: recordDecision
+      parameters:
+        - name: passportId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: x-tenant-id
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - decision
+                - rationale
+                - actor
+              properties:
+                decision:
+                  type: string
+                  enum: [approve, block, request_changes]
+                rationale:
+                  type: string
+                actor:
+                  type: string
+      responses:
+        '200':
+          description: Decision recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Passport'
+        '400':
+          description: Invalid request
+        '403':
+          description: Forbidden or State machine transition rejected
+        '404':
+          description: Passport not found
+        '500':
+          description: Internal server error
+  /passports/{passportId}/review:
+    post:
+      summary: Trigger a human review required state manually
+      operationId: triggerReview
+      parameters:
+        - name: passportId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: x-tenant-id
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Review triggered
+        '403':
+          description: State machine transition rejected
+        '404':
+          description: Passport not found
+  /passports/{passportId}/reverify:
+    post:
+      summary: Trigger reverification of a passport
+      operationId: triggerReverify
+      parameters:
+        - name: passportId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: x-tenant-id
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reverification triggered
+        '403':
+          description: State machine transition rejected
+        '404':
+          description: Passport not found
+components:
+  schemas:
+    Passport:
+      type: object
+      properties:
+        id:
+          type: string
+        assuranceStatus:
+          type: string
+        scopeSummary:
+          type: string
+    PassportExport:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          example: '1.0'
+        id:
+          type: string
+        status:
+          type: string
+        repo:
+          type: string
+        proposedCommit:
+          type: string
+        baseCommit:
+          type: string
+        policyVersion:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        intent:
+          type: object
+        changeMap:
+          type: object
+        planAlignment:
+          type: object
+        verification:
+          type: object
+        unknowns:
+          type: array
+          items:
+            type: string
+        decisions:
+          type: array
+        audit:
+          type: object

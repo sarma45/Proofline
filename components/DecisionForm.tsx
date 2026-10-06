@@ -9,6 +9,7 @@ export function DecisionForm({ passportId }: { passportId: string }) {
   const [rationale, setRationale] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (submitted) {
     return (
@@ -24,6 +25,7 @@ export function DecisionForm({ passportId }: { passportId: string }) {
     if (!decision) return;
     
     setLoading(true);
+    setError(null);
     try {
       const response = await fetch(`/api/v1/passports/${passportId}/decision`, {
         method: 'POST',
@@ -38,9 +40,13 @@ export function DecisionForm({ passportId }: { passportId: string }) {
         setSubmitted(true);
         // Force refresh to update the banner and status pills
         setTimeout(() => router.refresh(), 1000);
+      } else {
+        const data = await response.json().catch(() => null);
+        setError(data?.error || 'An error occurred while submitting your decision.');
       }
     } catch (err) {
       console.error(err);
+      setError('A network error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -90,17 +96,24 @@ export function DecisionForm({ passportId }: { passportId: string }) {
         />
       </div>
 
-      <div className="flex justify-end gap-3 pt-2">
-        <button type="button" className="px-4 py-2 text-sm font-medium border border-border rounded-md hover:bg-background-elevated transition-colors">
-          Cancel
-        </button>
-        <button 
-          type="submit" 
-          disabled={!decision || loading}
-          className="px-4 py-2 text-sm font-medium bg-accent text-white rounded-md hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[140px]"
-        >
-          {loading ? 'Submitting...' : 'Submit Decision'}
-        </button>
+      <div className="flex flex-col gap-3 pt-2">
+        {error && (
+          <div className="text-status-failed text-sm font-medium p-3 rounded-md bg-status-failed/10 border border-status-failed">
+            {error}
+          </div>
+        )}
+        <div className="flex justify-end gap-3">
+          <button type="button" className="px-4 py-2 text-sm font-medium border border-border rounded-md hover:bg-background-elevated transition-colors">
+            Cancel
+          </button>
+          <button 
+            type="submit" 
+            disabled={!decision || loading}
+            className="px-4 py-2 text-sm font-medium bg-accent text-white rounded-md hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[140px]"
+          >
+            {loading ? 'Submitting...' : 'Submit Decision'}
+          </button>
+        </div>
       </div>
     </form>
   );

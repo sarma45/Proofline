@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Shield, FileJson, CheckCircle, XCircle, Clock, AlertTriangle, ArrowRight } from 'lucide-react';
 import { prisma } from '../../lib/prisma';
+import { StatusPill } from '../../components/StatusPill';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,32 +22,6 @@ export default async function DashboardPage() {
     verified: passports.filter(p => p.assuranceStatus === 'VERIFIED_FOR_SCOPE').length,
     blocked: passports.filter(p => p.assuranceStatus === 'BLOCKED').length,
     humanReview: passports.filter(p => p.assuranceStatus === 'HUMAN_REVIEW_REQUIRED').length,
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'VERIFIED_FOR_SCOPE':
-        return <CheckCircle className="text-status-verified" size={18} />;
-      case 'BLOCKED':
-        return <XCircle className="text-status-failed" size={18} />;
-      case 'HUMAN_REVIEW_REQUIRED':
-        return <AlertTriangle className="text-status-warning" size={18} />;
-      default:
-        return <Clock className="text-muted" size={18} />;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'VERIFIED_FOR_SCOPE':
-        return 'text-status-verified bg-status-verified/10 border-status-verified/20';
-      case 'BLOCKED':
-        return 'text-status-failed bg-status-failed/10 border-status-failed/20';
-      case 'HUMAN_REVIEW_REQUIRED':
-        return 'text-status-warning bg-status-warning/10 border-status-warning/20';
-      default:
-        return 'text-muted bg-muted/10 border-muted/20';
-    }
   };
 
   return (
@@ -131,10 +106,7 @@ export default async function DashboardPage() {
                   {passports.map((passport) => (
                     <tr key={passport.id} className="hover:bg-muted/5 transition-colors group">
                       <td className="px-6 py-4">
-                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium ${getStatusColor(passport.assuranceStatus)}`}>
-                          {getStatusIcon(passport.assuranceStatus)}
-                          {passport.assuranceStatus.replace(/_/g, ' ')}
-                        </div>
+                        <StatusPill status={passport.assuranceStatus as any} size="sm" />
                       </td>
                       <td className="px-6 py-4">
                         <div className="font-medium text-foreground">{passport.scopeSummary}</div>

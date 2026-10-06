@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../../lib/prisma';
 import { AssuranceStateMachine } from '../../../../../../lib/state-machine';
 import crypto from 'crypto';
+import { getSessionProjectId } from '../../../../../../lib/auth';
 
 export async function POST(
   request: Request,
@@ -17,8 +18,8 @@ export async function POST(
       return NextResponse.json({ error: `Invalid decision. Must be one of: ${validDecisions.join(', ')}` }, { status: 400 });
     }
 
-    // MVP: Simulate resolving tenant/project from Auth context
-    const mockSessionProjectId = (await prisma.project.findFirst())?.id;
+    // Resolve tenant/project from Auth context
+    const mockSessionProjectId = await getSessionProjectId(request);
 
     if (!mockSessionProjectId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -40,7 +41,6 @@ export async function POST(
     const transitionResult = await AssuranceStateMachine.transition({
       passportId,
       actor: 'user_123',
-      fromStatus: passport.assuranceStatus as any,
       trigger: body.decision, // matches 'approve', 'request_changes', 'block', 'escalate'
       payload: { rationale: body.rationale }
     });
@@ -60,6 +60,7 @@ export async function POST(
       await tx.humanDecision.create({
         data: {
           decision: body.decision.toUpperCase(),
+          actor: 'user_123',
           rationale: body.rationale || null,
           reviewedHash: hash,
           passportId: passport.id

@@ -1,5 +1,6 @@
 import { prisma } from '../prisma';
 import { allFixtures } from '../fixtures';
+import { logger } from '../logger';
 
 /**
  * MVP Verification Engine Worker
@@ -10,16 +11,26 @@ import { allFixtures } from '../fixtures';
  */
 export async function processVerificationRun(runId: string) {
   try {
-    // 1. Lease the run
-    const run = await prisma.verificationRun.update({
+    // 1. Lease the run (optimistic lock)
+    const claim = await prisma.verificationRun.updateMany({
+      where: { id: runId, status: 'pending' },
+      data: { status: 'running', leasedUntil: new Date(Date.now() + 5 * 60000) }
+    });
+
+    const ctx = { context: 'verification-worker', runId };
+    if (claim.count === 0) {
+      logger.info(ctx, `Run already leased or not pending. Skipping.`);
+      return;
+    }
+
+    const run = await prisma.verificationRun.findUnique({
       where: { id: runId },
-      data: { status: 'running', leasedUntil: new Date(Date.now() + 5 * 60000) },
       include: { passport: { include: { pullRequest: true } } }
     });
 
     if (!run) throw new Error(`Run ${runId} not found`);
 
-    console.log(`[Worker] Started verification run for Passport ${run.passportId}`);
+    logger.info(ctx, `Started verification run for Passport ${run.passportId}`);
 
     // Simulate work delay
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -62,7 +73,6 @@ export async function processVerificationRun(runId: string) {
     const transition = await AssuranceStateMachine.transition({
       passportId: run.passportId,
       actor: 'system:engine',
-      fromStatus: run.passport.assuranceStatus as any,
       trigger: trigger
     });
 
@@ -91,15 +101,16 @@ export async function processVerificationRun(runId: string) {
       });
     });
 
-    console.log(`[Worker] Completed verification run for Passport ${run.passportId}. Status -> ${finalStatus}`);
+    logger.info(ctx, `Completed verification run for Passport ${run.passportId}. Status -> ${finalStatus}`);
 
   } catch (error) {
-    console.error(`[Worker] Failed to process run ${runId}:`, error);
+    const ctx = { context: 'verification-worker', runId };
+    logger.error(ctx, `Failed to process run`, error);
     
     // Attempt to mark as failed
     await prisma.verificationRun.update({
       where: { id: runId },
       data: { status: 'failed', leasedUntil: null }
-    }).catch(console.error);
+    }).catch(e => logger.error(ctx, `Failed to mark run as failed`, e));
   }
 }

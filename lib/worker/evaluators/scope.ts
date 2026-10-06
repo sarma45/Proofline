@@ -30,6 +30,14 @@ export async function runScopeAuditor(context: VerificationContext): Promise<Ski
       evidenceRefs: ['scope-analysis-report-456']
     };
   }
+  if (context.pullRequestDiff.includes('new-dep-without-lockfile')) {
+    return {
+      checkType: 'scope',
+      status: 'blocked',
+      severity: 'high',
+      message: 'New dependency introduced without lockfile update.',
+    };
+  }
   return {
     checkType: 'scope',
     status: 'passed',

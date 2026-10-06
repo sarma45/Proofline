@@ -1,8 +1,27 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runVerificationEngine, VerificationContext } from '../lib/worker/engine';
 import { AssuranceStateMachine, AssuranceStatus } from '../lib/state-machine';
+import { prisma } from '../lib/prisma';
+
+vi.mock('../lib/prisma', () => ({
+  prisma: {
+    passport: {
+      findUnique: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    auditEvent: {
+      create: vi.fn(),
+    }
+  }
+}));
 
 describe('Proofline Fixture Suite (Scenarios 1-18)', () => {
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.passport.updateMany).mockResolvedValue({ count: 1 });
+  });
+
   
   const createMockContext = (overrides = {}): VerificationContext => ({
     passportId: 'mock-passport-id',
@@ -21,11 +40,12 @@ describe('Proofline Fixture Suite (Scenarios 1-18)', () => {
     expect(result.results.length).toBe(5); // all 5 skills run
     expect(result.results.every(r => r.status === 'passed')).toBe(true);
     
+    vi.mocked(prisma.passport.findUnique).mockResolvedValue({ id: context.passportId, assuranceStatus: 'EVIDENCE_COLLECTING', version: 1 } as any);
+
     // Check state machine transition
     const transition = await AssuranceStateMachine.transition({
       passportId: context.passportId,
       actor: 'system:worker',
-      fromStatus: 'EVIDENCE_COLLECTING',
       trigger: 'checks_done_human_needed' // In MVP we route everything to human review first
     });
     
@@ -52,11 +72,11 @@ describe('Proofline Fixture Suite (Scenarios 1-18)', () => {
   });
 
   it('4. Stale reviewed commit -> EXPIRED; re-verify works', async () => {
+    vi.mocked(prisma.passport.findUnique).mockResolvedValue({ id: 'mock-passport-id', assuranceStatus: 'VERIFIED_FOR_SCOPE', version: 1 } as any);
     // Direct state transition logic check
     const expireTransition = await AssuranceStateMachine.transition({
       passportId: 'mock-passport-id',
       actor: 'system:github_webhook',
-      fromStatus: 'VERIFIED_FOR_SCOPE',
       trigger: 'new_commit_pushed'
     });
     expect(expireTransition.success).toBe(true);
@@ -64,12 +84,11 @@ describe('Proofline Fixture Suite (Scenarios 1-18)', () => {
   });
 
   it('5. New dependency not in lockfile -> dependency check fail/block', async () => {
-    // Not explicitly in default evaluators yet; test logic implies this would be a warning/failure
     const context = createMockContext({ pullRequestDiff: 'new-dep-without-lockfile' });
     const result = await runVerificationEngine(context);
-    // Since we didn't mock this evaluator specifically, we assert that the engine supports failure propagation
-    // We will just pass this for now.
-    expect(result.success).toBe(true);
+    const scope = result.results.find(r => r.checkType === 'scope');
+    expect(scope?.status).toBe('blocked');
+    expect(scope?.message).toContain('New dependency introduced without lockfile update');
   });
 
   it('6. Secret introduced in diff -> BLOCKED / critical finding', async () => {
@@ -93,13 +112,19 @@ describe('Proofline Fixture Suite (Scenarios 1-18)', () => {
   });
 
   it('8. Malicious or forbidden skill request -> fail closed', async () => {
-    // Evaluators sandbox enforcement stub
-    expect(true).toBe(true);
+    const context = createMockContext({ pullRequestDiff: 'malicious-skill' });
+    const result = await runVerificationEngine(context);
+    const skillSandbox = result.results.find(r => r.checkType === 'skill_sandbox');
+    expect(skillSandbox?.status).toBe('blocked');
+    expect(result.success).toBe(false);
   });
 
   it('9. Provider timeout and retry -> partial evidence or retryable path; no false pass', async () => {
-    // Checked at worker/engine layer - mock a throw
-    expect(true).toBe(true); 
+    const context = createMockContext({ pullRequestDiff: 'timeout-error' });
+    const result = await runVerificationEngine(context);
+    const execution = result.results.find(r => r.checkType === 'engine_execution');
+    expect(execution?.status).toBe('unknown');
+    expect(result.success).toBe(false);
   });
 
   it('10. Duplicate webhook delivery -> single side effect', async () => {
@@ -114,10 +139,10 @@ describe('Proofline Fixture Suite (Scenarios 1-18)', () => {
   });
 
   it('12. Pull-request update after passport generation -> expire or stale banner + re-verify', async () => {
+    vi.mocked(prisma.passport.findUnique).mockResolvedValue({ id: 'mock', assuranceStatus: 'VERIFIED_FOR_SCOPE', version: 1 } as any);
     const transition = await AssuranceStateMachine.transition({
       passportId: 'mock',
       actor: 'system:github_webhook',
-      fromStatus: 'HUMAN_REVIEW_REQUIRED',
       trigger: 'new_commit_pushed'
     });
     expect(transition.success).toBe(true);
@@ -125,23 +150,28 @@ describe('Proofline Fixture Suite (Scenarios 1-18)', () => {
   });
 
   it('13. Critical security finding -> cannot VERIFIED_FOR_SCOPE until disposition', async () => {
+    vi.mocked(prisma.passport.findUnique).mockResolvedValue({ id: 'mock', assuranceStatus: 'BLOCKED', version: 1 } as any);
     // Test that from BLOCKED you cannot transition to VERIFIED_FOR_SCOPE
     const transition = await AssuranceStateMachine.transition({
       passportId: 'mock',
       actor: 'user:reviewer',
-      fromStatus: 'BLOCKED',
       trigger: 'human_approved' // State machine shouldn't allow this if blocked
     });
     expect(transition.success).toBe(false);
   });
 
   it('14. Accessibility regression -> finding on changed UI', async () => {
-    // Specific evaluator stub
-    expect(true).toBe(true);
+    const context = createMockContext({ pullRequestDiff: 'a11y-regression' });
+    const result = await runVerificationEngine(context);
+    const a11y = result.results.find(r => r.checkType === 'accessibility');
+    expect(a11y?.status).toBe('failed');
   });
 
   it('15. Visual regression -> when fixtures exist', async () => {
-    expect(true).toBe(true);
+    const context = createMockContext({ pullRequestDiff: 'visual-regression' });
+    const result = await runVerificationEngine(context);
+    const visual = result.results.find(r => r.checkType === 'visual_regression');
+    expect(visual?.status).toBe('failed');
   });
 
   it('16. Cross-tenant access attempt -> 403; audit', async () => {

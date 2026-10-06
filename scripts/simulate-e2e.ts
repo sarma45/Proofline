@@ -19,13 +19,22 @@ async function main() {
   console.log(`Using proposed commit: ${commitHash} to trigger fixture behavior.`);
 
   // 1. Setup Tenant and Repository
+  const org = await prisma.organization.upsert({
+    where: { id: 'org-a' },
+    update: {},
+    create: {
+      id: 'org-a',
+      name: 'Acme Corp'
+    }
+  });
+
   const project = await prisma.project.upsert({
     where: { id: 'project-a' },
     update: {},
     create: {
       id: 'project-a',
-      name: 'Acme Corp',
-      policyRules: JSON.stringify({ requireHumanReview: true })
+      name: 'Core Platform',
+      organizationId: org.id
     }
   });
 

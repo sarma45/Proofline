@@ -27,7 +27,10 @@ vi.mock('../lib/state-machine', () => ({
 const createMockRequest = (body: any) => {
   return {
     json: async () => body,
-  } as Request;
+    headers: {
+      get: (name: string) => null
+    }
+  } as unknown as Request;
 };
 
 describe('API Route Contracts & Isolation', () => {
@@ -80,7 +83,6 @@ describe('API Route Contracts & Isolation', () => {
       expect(AssuranceStateMachine.transition).toHaveBeenCalledWith({
         passportId: '123',
         actor: 'user_123', // Hardcoded MVP actor
-        fromStatus: 'HUMAN_REVIEW_REQUIRED',
         trigger: 'approve',
         payload: { rationale: 'looks good' }
       });

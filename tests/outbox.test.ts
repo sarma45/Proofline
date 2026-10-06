@@ -13,6 +13,7 @@ vi.mock('../lib/prisma', () => ({
     outboxEvent: {
       findMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     }
   }
 }));
@@ -37,6 +38,10 @@ describe('Outbox Worker', () => {
     await processOutbox();
 
     expect((prisma as any).outboxEvent.findMany).toHaveBeenCalled();
+    expect((prisma as any).outboxEvent.updateMany).toHaveBeenCalledWith({
+      where: { id: 'event-1', status: 'pending' },
+      data: expect.objectContaining({ status: 'processing' })
+    });
     expect((prisma as any).outboxEvent.update).toHaveBeenCalledWith({
       where: { id: 'event-1' },
       data: expect.objectContaining({

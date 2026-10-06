@@ -11,11 +11,22 @@ import { PassportActions } from '../../../components/PassportActions';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { headers } from 'next/headers';
+
 async function getPassport(id: string) {
   // Use absolute URL since fetch in a Server Component requires it
   // Fallback to localhost:3000 during local dev
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-  const res = await fetch(`${baseUrl}/api/v1/passports/${id}`, { cache: 'no-store' });
+  
+  const headersList = headers();
+  const tenantId = headersList.get('x-tenant-id') || '';
+
+  const res = await fetch(`${baseUrl}/api/v1/passports/${id}`, { 
+    cache: 'no-store',
+    headers: {
+      'x-tenant-id': tenantId
+    }
+  });
   
   if (!res.ok) {
     if (res.status === 404) return null;
@@ -51,9 +62,15 @@ export default async function PassportPage({ params }: { params: { passportId: s
                 3-Min Brief
               </Link>
               <PassportActions passportId={passport.id} />
-              <button className="inline-flex items-center gap-2 text-sm text-accent hover:text-accent/80 transition-colors font-medium ml-2">
-                View PR on GitHub <ExternalLink size={14} />
-              </button>
+              {passport.pullRequestNumber ? (
+                <a href={`https://github.com/${passport.repo}/pull/${passport.pullRequestNumber}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-accent hover:text-accent/80 transition-colors font-medium ml-2">
+                  View PR on GitHub <ExternalLink size={14} />
+                </a>
+              ) : (
+                <a href={`https://github.com/${passport.repo}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-accent hover:text-accent/80 transition-colors font-medium ml-2">
+                  View Repo on GitHub <ExternalLink size={14} />
+                </a>
+              )}
             </div>
           </div>
           
@@ -98,14 +115,13 @@ export default async function PassportPage({ params }: { params: { passportId: s
           {/* Contextual Banners based on Status */}
           <div className="empty:hidden">
             {passport.status === 'EXPIRED' && (
-              <StaleBanner currentHead="fedcba9" />
+              <StaleBanner currentHead={passport.mergeHash || 'unknown'} />
             )}
             {passport.status === 'EVIDENCE_COLLECTING' && (
-              <PartialEvidenceBanner pendingChecks={['Build', 'Type check']} />
+              <PartialEvidenceBanner pendingChecks={passport.verification.checks.filter((c: any) => c.status === 'pending' || c.status === 'running').map((c: any) => c.type).length > 0 ? passport.verification.checks.filter((c: any) => c.status === 'pending' || c.status === 'running').map((c: any) => c.type) : ['Unknown checks']} />
             )}
-            {/* Hardcoded permission check demo for now */}
-            {passport.status === 'FAILED' && passport.scopeSummary.includes('permission') && (
-              <PermissionDeniedBanner requiredScope="repo:status" fixLink="#" />
+            {passport.status === 'FAILED' && passport.scopeSummary.toLowerCase().includes('permission') && (
+              <PermissionDeniedBanner requiredScope="repo:status" fixLink={`https://github.com/apps/proofline/installations/new`} />
             )}
           </div>
 
@@ -179,7 +195,7 @@ export default async function PassportPage({ params }: { params: { passportId: s
           {/* SECTION 6: Evidence Graph */}
           <section id="evidence-graph" className="scroll-mt-40 space-y-4 pt-4">
             <h2 className="text-xl font-semibold border-b border-border pb-2">Evidence Graph</h2>
-            <EvidenceGraph />
+            <EvidenceGraph passport={passport} />
           </section>
 
           {/* SECTION 7: Unknowns */}
@@ -237,6 +253,16 @@ export default async function PassportPage({ params }: { params: { passportId: s
 
         </main>
       </div>
+      
+      {/* SECTION 10: Sticky Footer for Mobile (Review) */}
+      {passport.status === 'HUMAN_REVIEW_REQUIRED' && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border shadow-lg z-50 flex justify-between items-center">
+          <span className="font-semibold text-sm">Decision Required</span>
+          <a href="#review" className="bg-accent text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-accent/90 transition-colors">
+            Review Now
+          </a>
+        </div>
+      )}
     </div>
   );
 }

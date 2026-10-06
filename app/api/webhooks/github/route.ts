@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import { processVerificationRun } from '../../../../lib/workers/verification';
 import crypto from 'crypto';
+import { logger } from '../../../../lib/logger';
 
 // Replace with your actual GitHub App Webhook Secret from env
 const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET || 'development-secret';
@@ -25,10 +26,15 @@ export async function POST(request: Request) {
     const signature = request.headers.get('x-hub-signature-256');
     const event = request.headers.get('x-github-event');
     const deliveryId = request.headers.get('x-github-delivery');
+    const reqId = crypto.randomUUID();
+    const ctx = { reqId, deliveryId, event };
 
-    // 1. Verify Webhook Signature (MVP)
-    // In production, we strictly enforce this. For local dev without a secret, we might bypass.
-    if (process.env.NODE_ENV === 'production' && !verifySignature(rawBody, signature)) {
+    if (!process.env.GITHUB_WEBHOOK_SECRET && process.env.NODE_ENV === 'production') {
+      logger.error(ctx, 'GITHUB_WEBHOOK_SECRET is missing in production!');
+      return NextResponse.json({ error: 'Configuration error' }, { status: 500 });
+    }
+
+    if (process.env.GITHUB_WEBHOOK_SECRET && !verifySignature(rawBody, signature)) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
@@ -48,45 +54,62 @@ export async function POST(request: Request) {
     const payload = JSON.parse(rawBody);
     const action = payload.action;
 
-    // 3. Store Delivery
+    // 3. Store Delivery (Redacted)
+    const redactedPayload = JSON.stringify({
+      action: payload.action,
+      repository: payload.repository?.full_name,
+      sender: payload.sender?.login,
+      installation: payload.installation?.id
+    });
+
     await prisma.githubWebhookDelivery.create({
       data: {
         id: deliveryId,
         event,
         action,
-        payload: rawBody
+        payload: redactedPayload
       }
     });
 
     // 4. Route Event Logic
     if (event === 'pull_request') {
-      await handlePullRequestEvent(action, payload);
+      await handlePullRequestEvent(action, payload, ctx);
     } else if (event === 'ping') {
-      console.log('GitHub Webhook Ping received.');
+      logger.info(ctx, 'GitHub Webhook Ping received.');
     } else {
-      console.log(`Unhandled GitHub event: ${event}`);
+      logger.info(ctx, `Unhandled GitHub event: ${event}`);
     }
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (error) {
-    console.error('Webhook processing failed:', error);
+    logger.error({ reqId: crypto.randomUUID() }, 'Webhook processing failed', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-async function handlePullRequestEvent(action: string, payload: any) {
+async function handlePullRequestEvent(action: string, payload: any, ctx: Record<string, any>) {
   // We only care about opened or synchronized PRs for creating/updating passports
   if (!['opened', 'synchronize', 'reopened'].includes(action)) {
     return;
   }
 
-  const { pull_request: pr, repository } = payload;
+  const { pull_request: pr, repository, installation } = payload;
   
+  if (!installation?.id) {
+    logger.error(ctx, 'No installation ID found in webhook payload');
+    return;
+  }
+
   // Find or create repository
-  // In a real app, the organization/project mapping would be resolved via the installation ID.
-  // For MVP, we'll connect it to our seeded "Acme Corp" / "Core Platform" project.
-  const project = await prisma.project.findFirst();
-  if (!project) throw new Error('No project found to associate PR with.');
+  // Map via GitHub installation_id -> org/project
+  const project = await prisma.project.findUnique({
+    where: { githubInstallationId: installation.id.toString() }
+  });
+
+  if (!project) {
+    logger.error(ctx, `No project found mapped to installation ID ${installation.id}`);
+    return;
+  }
 
   const repo = await prisma.repository.upsert({
     where: { githubRepoId: repository.full_name },
@@ -136,9 +159,13 @@ async function handlePullRequestEvent(action: string, payload: any) {
     }
   });
 
-  console.log(`Created Passport ${passport.id} for PR #${pr.number} (${action})`);
+  logger.info(ctx, `Created Passport ${passport.id} for PR #${pr.number} (${action})`);
 
-  // Asynchronously trigger the worker (fire and forget)
-  // In a production environment this would be pushed to a queue (SQS/Redis).
-  processVerificationRun(run.id).catch(e => console.error("Worker error:", e));
+  // Enqueue verification job via Outbox
+  await prisma.outboxEvent.create({
+    data: {
+      topic: 'verification.start',
+      payload: JSON.stringify({ runId: run.id })
+    }
+  });
 }
