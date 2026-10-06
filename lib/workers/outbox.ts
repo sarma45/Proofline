@@ -30,8 +30,12 @@ export async function processOutbox() {
     try {
       // 1. Process the event based on its topic
       if (event.topic === 'github.check_update') {
-        const payload = JSON.parse(event.payload);
+        const payload = event.payload as any;
         await notifyGitHub(payload);
+      } else if (event.topic === 'verification.start') {
+        const { processVerificationRun } = await import('./verification');
+        const payload = event.payload as any;
+        await processVerificationRun(payload.runId);
       } else {
         logger.warn({ context: 'outbox', eventId: event.id }, `Unknown topic ${event.topic}`);
       }

@@ -20,11 +20,13 @@ async function getPassport(id: string) {
   
   const headersList = headers();
   const tenantId = headersList.get('x-tenant-id') || '';
+  const cookieHeader = headersList.get('cookie') || '';
 
   const res = await fetch(`${baseUrl}/api/v1/passports/${id}`, { 
     cache: 'no-store',
     headers: {
-      'x-tenant-id': tenantId
+      'x-tenant-id': tenantId,
+      'cookie': cookieHeader
     }
   });
   

@@ -1,41 +1,67 @@
-import NextAuth from 'next-auth';
-
-// Placeholder for SSO/SAML configuration using NextAuth.
-// In a real enterprise setup, we would use a SAML provider or OIDC (Okta, Entra ID, etc.)
-// e.g. import OktaProvider from 'next-auth/providers/okta';
+import NextAuth from "next-auth"
+import GithubProvider from "next-auth/providers/github"
+import { prisma } from "../../../../lib/prisma"
 
 const handler = NextAuth({
   providers: [
-    // OktaProvider({
-    //   clientId: process.env.OKTA_CLIENT_ID as string,
-    //   clientSecret: process.env.OKTA_CLIENT_SECRET as string,
-    //   issuer: process.env.OKTA_ISSUER as string,
-    // }),
-    {
-      id: 'saml-mock',
-      name: 'Mock SAML',
-      type: 'oauth',
-      version: '2.0',
-      // This is just a boilerplate for MVP purposes.
-      // We'll plug in an actual enterprise IdP here when requested by a customer.
-      authorization: { url: 'https://example.com/oauth/authorize' },
-      token: { url: 'https://example.com/oauth/token' },
-      userinfo: { url: 'https://example.com/oauth/userinfo' },
-      profile(profile) {
-        return {
-          id: profile.id,
-          name: profile.name,
-          email: profile.email,
-        }
-      }
-    }
+    GithubProvider({
+      clientId: process.env.GITHUB_CLIENT_ID || '',
+      clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
+    }),
   ],
   callbacks: {
+    async signIn({ user, account, profile }) {
+      if (!user.email) return false;
+      
+      // Auto-provision user and default org if they don't exist
+      await prisma.$transaction(async (tx) => {
+        let dbUser = await tx.user.findUnique({ where: { email: user.email! } });
+        
+        if (!dbUser) {
+          // Create default org for the user
+          const org = await tx.organization.create({
+            data: { name: `${user.name || user.email}'s Org` }
+          });
+          
+          dbUser = await tx.user.create({
+            data: {
+              email: user.email!,
+              name: user.name || null,
+              organizationId: org.id
+            }
+          });
+
+          await tx.membership.create({
+            data: {
+              userId: dbUser.id,
+              organizationId: org.id,
+              role: 'owner'
+            }
+          });
+        }
+      });
+      
+      return true;
+    },
     async session({ session, token }) {
-      // Add tenant or organization info to session here
+      if (session.user?.email) {
+        const dbUser = await prisma.user.findUnique({
+          where: { email: session.user.email },
+          include: { organization: { include: { projects: true } } }
+        });
+        if (dbUser) {
+          (session as any).dbUserId = dbUser.id;
+          (session as any).organizationId = dbUser.organizationId;
+          (session as any).projects = dbUser.organization.projects.map(p => p.id);
+        }
+      }
       return session;
     }
-  }
-});
+  },
+  session: {
+    strategy: 'jwt'
+  },
+  secret: process.env.NEXTAUTH_SECRET || 'fallback-secret-for-development'
+})
 
-export { handler as GET, handler as POST };
+export { handler as GET, handler as POST }

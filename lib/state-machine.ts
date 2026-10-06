@@ -50,17 +50,30 @@ export class AssuranceStateMachine {
         const hasBlockingResults = passport.verificationRuns.some(run => 
           run.results.some(res => res.severity === 'critical' && res.status !== 'pass')
         );
+        const hasIncompleteRuns = passport.verificationRuns.some(run => run.status !== 'completed');
+        
+        // In a real app we'd compare req.payload.reviewedHash to passport.pullRequest.proposedCommit
         if (hasBlockingResults) {
           errorMsg = 'Cannot approve: passport has unresolved critical findings.';
+        } else if (hasIncompleteRuns) {
+          errorMsg = 'Cannot approve: verification checks are still running.';
+        } else if (!req.payload?.reviewedHash) {
+          errorMsg = 'Cannot approve: reviewedHash missing from payload.';
         } else {
           nextStatus = 'VERIFIED_FOR_SCOPE';
         }
       } else if (req.trigger === 'conditional_approve') {
-        nextStatus = 'CONDITIONAL_PASS';
+        if (!req.payload?.reviewedHash) {
+          errorMsg = 'Cannot conditionally approve: reviewedHash missing.';
+        } else {
+          nextStatus = 'CONDITIONAL_PASS';
+        }
       } else if (req.trigger === 'block') {
         nextStatus = 'BLOCKED';
       } else if (req.trigger === 'request_changes') {
-        nextStatus = 'FAILED';
+        // Semantic fix: requesting changes means it stays in review or goes back to collecting
+        // We'll keep it in HUMAN_REVIEW_REQUIRED but log the decision.
+        nextStatus = 'HUMAN_REVIEW_REQUIRED';
       } else if (req.trigger === 'escalate') {
         nextStatus = 'HUMAN_REVIEW_REQUIRED';
       }
@@ -87,34 +100,64 @@ export class AssuranceStateMachine {
 
   private static async commit(req: TransitionRequest, fromStatus: AssuranceStatus, toStatus: AssuranceStatus, currentVersion: number) {
     try {
-      // Optimistic concurrency locking on version
-      const updateResult = await prisma.passport.updateMany({
-        where: { 
-          id: req.passportId,
-          version: currentVersion
-        },
-        data: { 
-          assuranceStatus: toStatus,
-          version: currentVersion + 1
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Optimistic concurrency locking on version
+        const updateResult = await tx.passport.updateMany({
+          where: { 
+            id: req.passportId,
+            version: currentVersion
+          },
+          data: { 
+            assuranceStatus: toStatus,
+            version: currentVersion + 1
+          }
+        });
+
+        if (updateResult.count === 0) {
+          throw new Error('Concurrency conflict: passport was modified by another request.');
         }
+
+        // 2. Emit audit event
+        const reason = `Transitioned to ${toStatus}`;
+        await tx.auditEvent.create({
+          data: {
+            passportId: req.passportId,
+            action: req.trigger,
+            actor: req.actor,
+            details: {
+              fromStatus,
+              toStatus,
+              reason,
+              accepted: true,
+              payload: req.payload
+            }
+          }
+        });
+
+        // 3. Record Human Decision if applicable
+        if (['approve', 'conditional_approve', 'block', 'request_changes'].includes(req.trigger)) {
+          await tx.humanDecision.create({
+            data: {
+              passportId: req.passportId,
+              decision: req.trigger,
+              actor: req.actor,
+              rationale: req.payload?.rationale || null,
+              reviewedHash: req.payload?.reviewedHash || 'unknown'
+            }
+          });
+        }
+
+        return true;
       });
 
-      if (updateResult.count === 0) {
-        const msg = 'Concurrency conflict: passport was modified by another request.';
-        await this.audit(req, fromStatus, false, msg, toStatus);
-        return { success: false, error: msg };
-      }
-
-    } catch (err) {
+      return { success: true, toStatus };
+    } catch (err: any) {
       logger.error({ context: 'state-machine', passportId: req.passportId }, `DB update failed for ${req.passportId}`, err);
-      const msg = 'Internal error during state transition.';
+      const msg = err.message.includes('Concurrency conflict') ? err.message : 'Internal error during state transition.';
+      // Note: We log the rejection outside the transaction since the tx rolled back.
       await this.audit(req, fromStatus, false, msg, toStatus);
       return { success: false, error: msg };
     }
-
-    // 2. Emit audit event
-    await this.audit(req, fromStatus, true, `Transitioned to ${toStatus}`, toStatus);
-    return { success: true, toStatus };
   }
 
   private static async audit(req: TransitionRequest, fromStatus: AssuranceStatus, accepted: boolean, reason: string, toStatus?: AssuranceStatus) {
@@ -127,13 +170,13 @@ export class AssuranceStateMachine {
           passportId: req.passportId,
           action: req.trigger,
           actor: req.actor,
-          details: JSON.stringify({
+          details: {
             fromStatus,
             toStatus,
             reason,
             accepted,
             payload: req.payload
-          })
+          }
         }
       });
     } catch (err) {

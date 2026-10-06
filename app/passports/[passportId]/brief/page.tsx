@@ -6,9 +6,21 @@ import { Shield, ArrowRight, CheckCircle, XCircle, AlertCircle, AlertTriangle, P
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { headers } from 'next/headers';
+
 async function getPassport(id: string) {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-  const res = await fetch(`${baseUrl}/api/v1/passports/${id}`, { cache: 'no-store' });
+  const headersList = headers();
+  const tenantId = headersList.get('x-tenant-id') || '';
+  const cookieHeader = headersList.get('cookie') || '';
+
+  const res = await fetch(`${baseUrl}/api/v1/passports/${id}`, { 
+    cache: 'no-store',
+    headers: {
+      'x-tenant-id': tenantId,
+      'cookie': cookieHeader
+    }
+  });
   if (!res.ok) {
     if (res.status === 404) return null;
     throw new Error('Failed to fetch passport');

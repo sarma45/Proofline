@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -75,7 +75,7 @@ model Repository {
 model Policy {
   id        String   @id @default(uuid())
   version   String
-  rules     String // the actual policy configuration (stored as JSON string)
+  rules     Json // the actual policy configuration (stored as JSON)
   createdAt DateTime @default(now())
 
   projectId String
@@ -161,7 +161,7 @@ model GithubWebhookDelivery {
   id        String   @id
   event     String
   action    String?
-  payload   String
+  payload   Json
   createdAt DateTime @default(now())
 }
 
@@ -190,7 +190,7 @@ model EvidenceArtifact {
 model OutboxEvent {
   id            String    @id @default(uuid())
   topic         String
-  payload       String
+  payload       Json
   status        String    @default("pending") // pending, delivered, failed
   attempts      Int       @default(0)
   lastAttemptAt DateTime?
@@ -201,7 +201,7 @@ model AuditEvent {
   id        String   @id @default(uuid())
   action    String
   actor     String
-  details   String // JSON string
+  details   Json // JSON object
   createdAt DateTime @default(now())
 
   passportId String
@@ -223,7 +223,7 @@ model Skill {
   name        String   @unique
   description String
   isOfficial  Boolean  @default(true)
-  config      String?  // JSON configuration schema
+  config      Json?  // JSON configuration schema
   createdAt   DateTime @default(now())
 }
 

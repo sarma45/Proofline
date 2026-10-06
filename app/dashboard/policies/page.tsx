@@ -1,11 +1,20 @@
 import React from 'react';
 import { prisma } from '../../../lib/prisma';
 
+import { getSessionProjectId } from '../../../lib/auth';
+import { notFound, redirect } from 'next/navigation';
+
 export const dynamic = 'force-dynamic';
 
 export default async function PoliciesPage() {
-  // Mock tenant logic - for MVP we fetch all policies
+  const projectId = await getSessionProjectId(new Request('http://localhost')); 
+  
+  if (!projectId) {
+    redirect('/api/auth/signin');
+  }
+
   const policies = await prisma.policy.findMany({
+    where: { projectId },
     include: {
       project: true
     },
@@ -41,7 +50,7 @@ export default async function PoliciesPage() {
                 <tr key={policy.id} className="hover:bg-muted/5">
                   <td className="px-6 py-4 font-medium">{policy.project.name}</td>
                   <td className="px-6 py-4"><span className="px-2 py-1 bg-accent/10 text-accent rounded-full text-xs">{policy.version}</span></td>
-                  <td className="px-6 py-4 text-muted truncate max-w-xs">{policy.rules.substring(0, 50)}...</td>
+                  <td className="px-6 py-4 text-muted truncate max-w-xs">{JSON.stringify(policy.rules).substring(0, 50)}...</td>
                   <td className="px-6 py-4 text-muted">{new Date(policy.createdAt).toLocaleDateString()}</td>
                 </tr>
               ))}

@@ -28,7 +28,7 @@ describe('Outbox Worker', () => {
     const mockEvent = {
       id: 'event-1',
       topic: 'github.check_update',
-      payload: JSON.stringify({ prNumber: 123, repoId: 'acme-corp/api-gateway', status: 'VERIFIED_FOR_SCOPE' }),
+      payload: { prNumber: 123, repoId: 'acme-corp/api-gateway', status: 'VERIFIED_FOR_SCOPE' },
       status: 'pending',
       attempts: 0
     };
@@ -55,7 +55,7 @@ describe('Outbox Worker', () => {
     const mockEvent = {
       id: 'event-2',
       topic: 'github.check_update',
-      payload: 'invalid-json', // This will throw on JSON.parse
+      payload: { bad: 'data' }, // This will throw because repoId is missing and notifyGitHub will call split on undefined
       status: 'pending',
       attempts: 2 // It's on its 3rd attempt
     };

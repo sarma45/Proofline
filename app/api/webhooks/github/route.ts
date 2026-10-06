@@ -42,34 +42,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing headers' }, { status: 400 });
     }
 
-    // 2. Deduplicate Delivery
-    const existingDelivery = await prisma.githubWebhookDelivery.findUnique({
-      where: { id: deliveryId }
-    });
-
-    if (existingDelivery) {
-      return NextResponse.json({ message: 'Already processed' }, { status: 200 });
-    }
-
+    // 2. Deduplicate Delivery (Atomic)
     const payload = JSON.parse(rawBody);
     const action = payload.action;
 
-    // 3. Store Delivery (Redacted)
-    const redactedPayload = JSON.stringify({
+    const redactedPayload = {
       action: payload.action,
       repository: payload.repository?.full_name,
       sender: payload.sender?.login,
       installation: payload.installation?.id
-    });
+    };
 
-    await prisma.githubWebhookDelivery.create({
-      data: {
-        id: deliveryId,
-        event,
-        action,
-        payload: redactedPayload
+    try {
+      await prisma.githubWebhookDelivery.create({
+        data: {
+          id: deliveryId,
+          event,
+          action,
+          payload: redactedPayload
+        }
+      });
+    } catch (e: any) {
+      if (e.code === 'P2002') {
+        // Unique constraint violation means we already processed this delivery
+        return NextResponse.json({ message: 'Already processed' }, { status: 200 });
       }
-    });
+      throw e;
+    }
 
     // 4. Route Event Logic
     if (event === 'pull_request') {
@@ -139,33 +138,35 @@ async function handlePullRequestEvent(action: string, payload: any, ctx: Record<
     }
   });
 
-  // Create a new Passport for this specific commit hash pair
-  // If the PR is updated (synchronized), we generate a NEW passport, ensuring immutability.
-  const passport = await prisma.passport.create({
-    data: {
-      assuranceStatus: 'EVIDENCE_COLLECTING',
-      scopeSummary: 'Evaluating PR Changes',
-      policyVersion: '1.0.0', // Would resolve from Project settings
-      projectId: project.id,
-      pullRequestId: prRecord.id
-    }
-  });
+  await prisma.$transaction(async (tx) => {
+    // Create a new Passport for this specific commit hash pair
+    // If the PR is updated (synchronized), we generate a NEW passport, ensuring immutability.
+    const passport = await tx.passport.create({
+      data: {
+        assuranceStatus: 'EVIDENCE_COLLECTING',
+        scopeSummary: 'Evaluating PR Changes',
+        policyVersion: '1.0.0', // Would resolve from Project settings
+        projectId: project.id,
+        pullRequestId: prRecord.id
+      }
+    });
 
-  // Create the Verification Run intent to be picked up by the Worker/Engine
-  const run = await prisma.verificationRun.create({
-    data: {
-      status: 'pending',
-      passportId: passport.id
-    }
-  });
+    // Create the Verification Run intent to be picked up by the Worker/Engine
+    const run = await tx.verificationRun.create({
+      data: {
+        status: 'pending',
+        passportId: passport.id
+      }
+    });
 
-  logger.info(ctx, `Created Passport ${passport.id} for PR #${pr.number} (${action})`);
+    logger.info(ctx, `Created Passport ${passport.id} for PR #${pr.number} (${action})`);
 
-  // Enqueue verification job via Outbox
-  await prisma.outboxEvent.create({
-    data: {
-      topic: 'verification.start',
-      payload: JSON.stringify({ runId: run.id })
-    }
+    // Enqueue verification job via Outbox
+    await tx.outboxEvent.create({
+      data: {
+        topic: 'verification.start',
+        payload: { runId: run.id }
+      }
+    });
   });
 }
