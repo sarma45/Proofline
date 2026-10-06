@@ -86,7 +86,7 @@ export async function GET(
         id: a.id,
         action: a.action,
         actor: a.actor,
-        details: JSON.parse(a.details),
+        details: typeof a.details === 'string' ? JSON.parse(a.details) : a.details,
         created_at: a.createdAt.toISOString()
       })),
       exported_at: new Date().toISOString()

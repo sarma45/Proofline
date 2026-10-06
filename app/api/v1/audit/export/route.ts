@@ -43,7 +43,10 @@ export async function GET(request: Request) {
       const csvLines = ['id,createdAt,passportId,actor,action,details'];
       for (const e of events) {
         // Escape CSV values
-        const details = e.details.replace(/"/g, '""');
+        const rawDetails = typeof e.details === 'string'
+          ? e.details
+          : JSON.stringify(e.details ?? null);
+        const details = rawDetails.replace(/"/g, '""');
         csvLines.push(`"${e.id}","${e.createdAt.toISOString()}","${e.passportId}","${e.actor}","${e.action}","${details}"`);
       }
       const csv = csvLines.join('\n');
@@ -66,7 +69,7 @@ export async function GET(request: Request) {
         passportId: e.passportId,
         actor: e.actor,
         action: e.action,
-        details: JSON.parse(e.details)
+        details: typeof e.details === 'string' ? JSON.parse(e.details) : e.details
       }))
     });
 
