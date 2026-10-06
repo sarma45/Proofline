@@ -1,0 +1,14 @@
+events:
+  verification_requested:
+    payload:
+      project_id: string
+      pr_id: string
+      base_sha: string
+      head_sha: string
+      policy_version: string
+  passport_transitioned:
+    payload:
+      passport_id: string
+      from_status: string
+      to_status: string
+      actor: string

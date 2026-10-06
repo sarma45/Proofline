@@ -1,0 +1,25 @@
+openapi: 3.0.3
+info:
+  title: Proofline API
+  version: 1.0.0
+paths:
+  /v1/passports/{passport_id}:
+    get:
+      summary: Get Change Passport
+      responses:
+        '200':
+          description: OK
+  /v1/passports/{passport_id}/review:
+    post:
+      summary: Submit Human Decision
+      responses:
+        '200':
+          description: OK
+        '409':
+          description: Conflict (State transition invalid)
+  /v1/github/webhooks:
+    post:
+      summary: GitHub Webhook Receiver
+      responses:
+        '202':
+          description: Accepted (Job enqueued)

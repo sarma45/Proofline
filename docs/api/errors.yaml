@@ -1,0 +1,16 @@
+components:
+  schemas:
+    ErrorEnvelope:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        retryable:
+          type: boolean
+        retry_class:
+          type: string
+          enum: [backoff, immediate, none]
+        request_id:
+          type: string

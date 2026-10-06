@@ -1,0 +1,1 @@
+{"changeMap":{"files":[{"path":"src/middleware/rateLimit.ts","changeType":"modified","linesAdded":5,"linesRemoved":3}],"dependencies":[]},"unknowns":[],"plan":{"summary":"Fix race condition in Redis rate limiter","successCriteria":["Counter increments atomically","Tests pass under concurrent load"],"nonGoals":[],"assumptions":[],"source":"inferred"}}

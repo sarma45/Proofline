@@ -1,0 +1,10 @@
+jobs:
+  verification.run:
+    inputs: [project_id, pr_id, base_sha, head_sha, policy_version, trigger]
+    outputs: [passport_upsert, checks, evidence, check_update, usage_event]
+  passport.expire:
+    inputs: [passport_id, reason]
+    outputs: [status_expired, audit]
+  outbox.dispatch:
+    inputs: []
+    outputs: [deliver_domain_events]
