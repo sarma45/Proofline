@@ -7,10 +7,10 @@ import { notFound, redirect } from 'next/navigation';
 export const dynamic = 'force-dynamic';
 
 export default async function PoliciesPage() {
-  const projectId = await getSessionProjectId(new Request('http://localhost')); 
+  const projectId = await getSessionProjectId();
   
   if (!projectId) {
-    redirect('/api/auth/signin');
+    redirect('/auth/signin?callbackUrl=%2Fdashboard%2Fpolicies');
   }
 
   const policies = await prisma.policy.findMany({

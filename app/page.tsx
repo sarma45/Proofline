@@ -29,8 +29,8 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-4">
             <Link href="/dashboard" className="text-sm font-medium hover:text-accent transition-colors">Dashboard</Link>
-            <Link href="/dashboard" className="text-sm font-medium bg-foreground text-background px-4 py-2 rounded-md hover:bg-foreground/90 transition-colors">
-              Install GitHub App
+            <Link href="/onboarding" className="text-sm font-medium bg-foreground text-background px-4 py-2 rounded-md hover:bg-foreground/90 transition-colors">
+              Get started
             </Link>
           </div>
         </div>
@@ -53,8 +53,8 @@ export default function LandingPage() {
               Don't let verification debt slow you down. Proofline generates an evidence-backed Change Passport for every AI-assisted software change.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-              <Link href="/onboarding" className="flex items-center gap-2 bg-accent text-white px-6 py-3 rounded-md hover:bg-accent/90 transition-colors font-medium text-lg w-full sm:w-auto justify-center">
-                <Github size={20} /> Connect GitHub
+              <Link href="/auth/signin?callbackUrl=%2Fonboarding" className="flex items-center gap-2 bg-accent text-white px-6 py-3 rounded-md hover:bg-accent/90 transition-colors font-medium text-lg w-full sm:w-auto justify-center">
+                <Github size={20} /> Sign in with GitHub
               </Link>
               <Link href="/passports/pass_123abc" className="flex items-center gap-2 bg-background-elevated border border-border px-6 py-3 rounded-md hover:border-muted transition-colors font-medium text-lg w-full sm:w-auto justify-center">
                 View Sample Passport <ChevronRight size={18} />

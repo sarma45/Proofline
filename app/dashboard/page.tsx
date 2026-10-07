@@ -6,15 +6,13 @@ import { StatusPill } from '../../components/StatusPill';
 
 import { getSessionProjectId } from '../../lib/auth';
 import { notFound, redirect } from 'next/navigation';
-
 export const dynamic = 'force-dynamic';
-
 export default async function DashboardPage() {
-  // Enforce Tenant Scope
-  const projectId = await getSessionProjectId(new Request('http://localhost')); // We can pass a dummy request because getServerSession doesn't strictly need it in app router if we just call it directly in auth.ts
+  // Enforce tenant scope using the signed-in user's project membership.
+  const projectId = await getSessionProjectId();
   
   if (!projectId) {
-    redirect('/api/auth/signin');
+    redirect('/auth/signin?callbackUrl=%2Fdashboard');
   }
 
   const passports = await prisma.passport.findMany({

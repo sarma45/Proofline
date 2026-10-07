@@ -1,90 +1,76 @@
-import React from 'react';
-import Link from 'next/link';
-import { Shield, CheckCircle, Circle, ArrowRight, Github } from 'lucide-react';
+import Link from "next/link";
+import { getServerSession } from "next-auth/next";
+import { ArrowRight, CheckCircle, Circle, Github, Shield } from "lucide-react";
+import { authOptions } from "../../lib/auth-options";
+import { GitHubSignInButton } from "../../components/GitHubSignInButton";
 
-export default function OnboardingPage() {
+export const dynamic = "force-dynamic";
+
+export default async function OnboardingPage() {
+  const session = await getServerSession(authOptions);
+  const signedIn = Boolean(session?.user?.email);
+  const appSlug = (process.env.NEXT_PUBLIC_GITHUB_APP_SLUG || "proofline-mahadeva").replace(
+    /[^a-zA-Z0-9-]/g,
+    "",
+  );
+  const installationUrl = `https://github.com/apps/${appSlug}/installations/new`;
+
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6">
-      
-      <div className="max-w-xl w-full space-y-10">
-        
-        <div className="text-center space-y-4">
-          <div className="mx-auto w-16 h-16 bg-background-elevated rounded-2xl flex items-center justify-center border border-border shadow-sm mb-6">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-foreground">
+      <div className="w-full max-w-xl space-y-8">
+        <header className="space-y-3 text-center">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-background-elevated">
             <Shield size={32} className="text-accent" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">Welcome to Proofline</h1>
-          <p className="text-muted text-lg">Let's set up your first Change Passport and secure your AI deployments.</p>
-        </div>
+          <h1 className="text-3xl font-bold tracking-tight">Set up Proofline</h1>
+          <p className="text-lg text-muted">Sign in first, then install the GitHub App on the repositories you want Proofline to verify.</p>
+        </header>
 
-        {/* Progress Steps */}
-        <div className="bg-background-elevated border border-border rounded-xl p-8 shadow-sm">
-          <div className="space-y-8">
-            
-            {/* Step 1: Account (Done) */}
-            <div className="flex gap-4">
-              <div className="mt-1">
-                <CheckCircle className="text-status-verified" size={24} />
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Create Account</h3>
-                <p className="text-muted text-sm mt-1">You've successfully authenticated with acme-corp.</p>
-              </div>
+        <section className="space-y-7 rounded-xl border border-border bg-background-elevated p-8 shadow-sm">
+          <div className="flex gap-4">
+            {signedIn ? <CheckCircle className="mt-1 shrink-0 text-status-verified" size={24} /> : <Circle className="mt-1 shrink-0 text-accent" size={24} />}
+            <div className="flex-1">
+              <h2 className="text-lg font-semibold">1. Sign in with GitHub</h2>
+              {signedIn ? (
+                <p className="mt-1 text-sm text-muted">Signed in as {session?.user?.email}.</p>
+              ) : (
+                <>
+                  <p className="mb-4 mt-1 text-sm text-muted">This creates your Proofline workspace using the verified primary email from GitHub.</p>
+                  <GitHubSignInButton callbackUrl="/onboarding" label="Continue with GitHub" />
+                </>
+              )}
             </div>
-
-            {/* Step 2: Install (Current) */}
-            <div className="flex gap-4 relative">
-              <div className="absolute left-3 top-[-24px] bottom-[32px] w-px bg-border -z-10"></div>
-              <div className="mt-1 bg-background">
-                <Circle className="text-accent fill-accent/20" size={24} />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg text-accent">Install GitHub App</h3>
-                <p className="text-muted text-sm mt-1 mb-4">
-                  Proofline needs access to your repository to intercept Pull Requests and generate passports. We only request `read` access to code and `write` access to commit statuses.
-                </p>
-                <button className="inline-flex items-center gap-2 bg-[#24292e] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#24292e]/90 transition-colors">
-                  <Github size={16} /> Install on GitHub
-                </button>
-              </div>
-            </div>
-
-            {/* Step 3: Policy (Pending) */}
-            <div className="flex gap-4 opacity-50 relative">
-              <div className="absolute left-3 top-[-24px] bottom-[32px] w-px bg-border -z-10"></div>
-              <div className="mt-1 bg-background">
-                <Circle className="text-muted" size={24} />
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Configure Policy</h3>
-                <p className="text-muted text-sm mt-1">Define your first validation threshold (e.g., standard strictness).</p>
-              </div>
-            </div>
-
-            {/* Step 4: Sample (Pending) */}
-            <div className="flex gap-4 opacity-50 relative">
-              <div className="absolute left-3 top-[-24px] bottom-[32px] w-px bg-border -z-10"></div>
-              <div className="mt-1 bg-background">
-                <Circle className="text-muted" size={24} />
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Run Sample Verification</h3>
-                <p className="text-muted text-sm mt-1">We'll verify a mock PR so you can see a passport in action.</p>
-              </div>
-            </div>
-
           </div>
-        </div>
 
-        <div className="flex justify-between items-center px-4">
-          <Link href="/" className="text-sm text-muted hover:text-foreground transition-colors">
-            Back to Home
-          </Link>
-          <Link href="/dashboard" className="text-sm font-medium text-accent hover:underline inline-flex items-center gap-1">
-            Skip to Dashboard <ArrowRight size={14} />
-          </Link>
-        </div>
+          <div className="flex gap-4">
+            {signedIn ? <Circle className="mt-1 shrink-0 fill-accent/20 text-accent" size={24} /> : <Circle className="mt-1 shrink-0 text-muted" size={24} />}
+            <div className="flex-1">
+              <h2 className="text-lg font-semibold">2. Install the GitHub App</h2>
+              <p className="mb-4 mt-1 text-sm text-muted">Grant the Proofline GitHub App access to the repositories you want to connect. This is separate from signing in.</p>
+              {signedIn ? (
+                <a href={installationUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-md bg-[#24292e] px-4 py-2 text-sm font-medium text-white hover:bg-[#24292e]/90">
+                  <Github size={16} /> Install Proofline on GitHub
+                </a>
+              ) : (
+                <p className="text-sm text-muted">Sign in above to continue to installation.</p>
+              )}
+            </div>
+          </div>
 
+          <div className="flex gap-4 opacity-60">
+            <Circle className="mt-1 shrink-0 text-muted" size={24} />
+            <div>
+              <h2 className="text-lg font-semibold">3. Configure your first project</h2>
+              <p className="mt-1 text-sm text-muted">Your workspace and starter project are created during sign-in. Repository event processing will be enabled after app installation is connected.</p>
+            </div>
+          </div>
+        </section>
+
+        <footer className="flex items-center justify-between px-2">
+          <Link href="/" className="text-sm text-muted hover:text-foreground">Back to Proofline</Link>
+          {signedIn && <Link href="/dashboard" className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline">Open dashboard <ArrowRight size={14} /></Link>}
+        </footer>
       </div>
-    </div>
+    </main>
   );
 }
