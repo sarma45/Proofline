@@ -22,6 +22,10 @@ It intercepts Pull Requests, runs extensive verification tasks, and enforces pol
 
 ## Getting Started
 
+### GitHub sign-in and installation
+
+Configure a GitHub App and Vercel using the checklist in [`docs/github-auth-setup.md`](docs/github-auth-setup.md). Sign-in requires the GitHub App's **Client ID** and matching **Client Secret**, `NEXTAUTH_SECRET`, and the exact callback URL `https://YOUR-HOST/api/auth/callback/github`. GitHub App installation and the webhook are separate from OAuth sign-in; the current webhook endpoint is an MVP stub and does not yet process repository events.
+
 ### Prerequisites
 
 - Node.js (v18+)
