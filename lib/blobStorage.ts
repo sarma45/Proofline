@@ -1,9 +1,9 @@
+import { get, put } from '@vercel/blob';
+import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
-import crypto from 'crypto';
 import { prisma } from './prisma';
 
-// Ensure the local blob directory exists
 const BLOB_DIR = path.join(process.cwd(), '.data', 'blobs');
 
 async function ensureBlobDir() {
@@ -15,8 +15,9 @@ async function ensureBlobDir() {
 }
 
 /**
- * Stores a rich evidence payload (JSON string or Buffer) into local storage
- * and returns the corresponding EvidenceArtifact Prisma record.
+ * Stores an evidence payload in private Vercel Blob storage when available.
+ * Local disk is retained only as a development fallback when Blob credentials
+ * are not present, since the Vercel filesystem is ephemeral in production.
  */
 export async function storeEvidenceBlob({
   passportId,
@@ -31,30 +32,34 @@ export async function storeEvidenceBlob({
   contentType?: string;
   sensitivity?: string;
 }) {
-  await ensureBlobDir();
-
   const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8');
-  
-  // Calculate SHA256 Hash
   const hash = crypto.createHash('sha256').update(buffer).digest('hex');
   const sizeBytes = buffer.length;
-
-  // We use the hash as the filename to natively deduplicate
   const filename = `${hash}.blob`;
-  const filepath = path.join(BLOB_DIR, filename);
 
-  // Write to disk if it doesn't already exist
-  try {
-    await fs.access(filepath);
-  } catch {
-    await fs.writeFile(filepath, buffer);
+  let uri: string;
+  if (process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN) {
+    const blob = await put(`proofline/evidence/${filename}`, buffer, {
+      access: 'private',
+      addRandomSuffix: false,
+      contentType
+    });
+    uri = blob.url;
+  } else {
+    await ensureBlobDir();
+    const filepath = path.join(BLOB_DIR, filename);
+    try {
+      await fs.access(filepath);
+    } catch {
+      await fs.writeFile(filepath, buffer);
+    }
+    uri = `local://${filename}`;
   }
 
-  // Record it in the database
-  const artifact = await prisma.evidenceArtifact.create({
+  return prisma.evidenceArtifact.create({
     data: {
       hash,
-      uri: `local://${filename}`,
+      uri,
       sizeBytes,
       contentType,
       sensitivity,
@@ -62,21 +67,22 @@ export async function storeEvidenceBlob({
       verificationRunId
     }
   });
-
-  return artifact;
 }
 
 /**
- * Retrieves a stored blob based on its URI
+ * Retrieves an evidence payload from private Vercel Blob or local development storage.
  */
 export async function retrieveEvidenceBlob(uri: string): Promise<string> {
-  if (!uri.startsWith('local://')) {
-    throw new Error('Only local:// URIs are supported in MVP');
+  if (uri.startsWith('local://')) {
+    await ensureBlobDir();
+    const filename = uri.replace('local://', '');
+    return fs.readFile(path.join(BLOB_DIR, filename), 'utf8');
   }
 
-  const filename = uri.replace('local://', '');
-  const filepath = path.join(BLOB_DIR, filename);
+  const blob = await get(uri, { access: 'private' });
+  if (!blob) {
+    throw new Error(`Evidence blob not found: ${uri}`);
+  }
 
-  const content = await fs.readFile(filepath, 'utf8');
-  return content;
+  return new Response(blob.stream).text();
 }
